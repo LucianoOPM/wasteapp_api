@@ -6,7 +6,10 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
-import type { ApiErrorResponse, ValidationErrorDetail } from '@/utils/response.types';
+import type {
+  ApiErrorResponse,
+  ValidationErrorDetail,
+} from '@/utils/response.types';
 
 interface ExceptionResponseObject {
   message?: string | string[];
@@ -64,7 +67,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         return {
           status,
           code: 'VALIDATION_ERROR',
-          message: responseObj.message as string || 'Error de validación',
+          message: (responseObj.message as string) || 'Error de validación',
           details: responseObj.errors,
         };
       }

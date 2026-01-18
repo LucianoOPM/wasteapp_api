@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 export const BaseAccountSchema = z.object({
-  user: z.cuid2().nonempty().nonoptional(), //TODO provicional, en realidad esto se tomará de las cookies de autenticación
   accountName: z.string().trim().min(1).max(50),
   color: z.string().trim().min(1),
   balance: z.coerce.number().nonnegative(), //TODO el balance se colocará en el monto de la base de datos y además se generará como transacción

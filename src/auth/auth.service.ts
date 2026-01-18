@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '@/users/users.service';
@@ -23,6 +23,8 @@ export interface TokenPair {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     protected readonly usersService: UsersService,
     protected readonly passwordManager: PasswordManager,
@@ -59,8 +61,6 @@ export class AuthService {
    * Login de usuario
    */
   async login(loginDto: LoginDto) {
-    console.log({ loginDto });
-
     // Validar credenciales
     const user = await this.validateUser(loginDto.email, loginDto.password);
 
@@ -68,6 +68,11 @@ export class AuthService {
     const tokens = await this.generateTokenPair(
       user,
       loginDto.rememberMe ?? false,
+    );
+
+    // Log exitoso
+    this.logger.log(
+      `Successful login for user: ${user.email} (ID: ${user.id})`,
     );
 
     return {
@@ -80,14 +85,21 @@ export class AuthService {
    * Logout: invalida refresh token
    */
   async logout(refreshToken: string): Promise<void> {
+    const storedToken =
+      await this.authRepository.findRefreshToken(refreshToken);
+
+    if (storedToken) {
+      this.logger.log(`User logged out: ${storedToken.userId}`);
+    }
+
     await this.authRepository.deleteRefreshToken(refreshToken);
   }
 
   /**
-   * Refresh: genera nuevo access token usando refresh token
+   * Refresh: genera nuevos access y refresh tokens, revocando el anterior
    */
   async refresh(refreshToken: string) {
-    // Buscar refresh token en BD
+    // 1. Buscar refresh token en BD
     const storedToken =
       await this.authRepository.findRefreshToken(refreshToken);
 
@@ -95,18 +107,31 @@ export class AuthService {
       throw new UnauthorizedException('Token inválido');
     }
 
-    // Verificar expiración
+    // 2. Verificar si el token fue marcado como "usado" (detección de reuso)
+    if (storedToken.wasUsed) {
+      // ¡Token reutilizado! Posible robo - revocar todas las sesiones del usuario
+      this.logger.error(
+        `SECURITY: Token reuse detected for user ${storedToken.userId}. All sessions revoked.`,
+      );
+
+      await this.authRepository.revokeAllUserTokens(storedToken.userId);
+      throw new UnauthorizedException(
+        'Token reuse detected. All sessions have been invalidated for security.',
+      );
+    }
+
+    // 3. Verificar expiración en BD
     if (storedToken.expiresAt < new Date()) {
       await this.authRepository.deleteRefreshToken(refreshToken);
       throw new UnauthorizedException('Token expirado');
     }
 
-    // Verificar que el usuario esté activo
+    // 4. Verificar que el usuario esté activo
     if (!storedToken.user.isActive) {
       throw new UnauthorizedException('Usuario inactivo');
     }
 
-    // Verificar firma del refresh token
+    // 5. Verificar firma del refresh token
     try {
       const refreshSecret =
         this.configService.getOrThrow<string>('jwt.refreshSecret');
@@ -118,11 +143,28 @@ export class AuthService {
       throw new UnauthorizedException('Token inválido');
     }
 
-    // Generar SOLO nuevo access token (refresh token sigue siendo válido)
+    // 6. Marcar token como "usado" antes de eliminarlo (para detectar reuso)
+    await this.authRepository.markTokenAsUsed(refreshToken);
+
+    // 7. Determinar si el token original era de larga duración (rememberMe)
+    const tokenDurationMs =
+      storedToken.expiresAt.getTime() - storedToken.createdAt.getTime();
+    const tokenDurationDays = tokenDurationMs / (1000 * 60 * 60 * 24);
+    const rememberMe = tokenDurationDays > 7;
+
+    // 8. Generar NUEVOS tokens
     const accessToken = await this.generateAccessToken(storedToken.user);
+    const newRefreshToken = await this.generateRefreshToken(
+      storedToken.user,
+      rememberMe,
+    );
+
+    // 9. Revocar/invalidar el refresh token anterior (eliminarlo de BD)
+    await this.authRepository.deleteRefreshToken(refreshToken);
 
     return {
       accessToken,
+      refreshToken: newRefreshToken,
       user: this.sanitizeUser(storedToken.user),
     };
   }
@@ -134,10 +176,12 @@ export class AuthService {
     const user = await this.usersService.findByEmail(email);
 
     if (!user) {
+      this.logger.warn(`Failed login attempt - user not found: ${email}`);
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
     if (!user.isActive) {
+      this.logger.warn(`Failed login attempt - inactive user: ${email}`);
       throw new UnauthorizedException('Usuario inactivo');
     }
 
@@ -147,6 +191,9 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
+      this.logger.warn(
+        `Failed login attempt - invalid password for user: ${email}`,
+      );
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
@@ -164,6 +211,13 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  /**
+   * Verifica y decodifica un access token
+   */
+  verifyAccessToken(token: string, secret: string): JwtPayload {
+    return this.jwtService.verify(token, { secret });
   }
 
   /**
@@ -190,13 +244,18 @@ export class AuthService {
 
     const accessSecret =
       this.configService.getOrThrow<string>('jwt.accessSecret');
-    const accessExpiresIn = this.configService.getOrThrow<string>(
+    const accessExpiresIn = this.configService.getOrThrow<'15m' | '30d'>(
       'jwt.accessExpiresIn',
     );
+    const issuer = this.configService.getOrThrow<string>('jwt.issuer');
+    const audience = this.configService.getOrThrow<string>('jwt.audience');
 
     return await this.jwtService.signAsync(payload, {
       secret: accessSecret,
-      expiresIn: accessExpiresIn as any,
+      algorithm: 'HS256',
+      expiresIn: accessExpiresIn,
+      issuer,
+      audience,
     });
   }
 
@@ -217,16 +276,21 @@ export class AuthService {
 
     const refreshSecret =
       this.configService.getOrThrow<string>('jwt.refreshSecret');
+    const issuer = this.configService.getOrThrow<string>('jwt.issuer');
+    const audience = this.configService.getOrThrow<string>('jwt.audience');
 
     // Seleccionar duración según rememberMe
     const refreshExpiresIn = rememberMe
-      ? this.configService.getOrThrow<string>('jwt.refreshExpiresInLong') // 30 días
-      : this.configService.getOrThrow<string>('jwt.refreshExpiresInShort'); // 1 hora
+      ? this.configService.getOrThrow<'30d'>('jwt.refreshExpiresInLong') // 30 días
+      : this.configService.getOrThrow<'7d'>('jwt.refreshExpiresInShort'); // 7 días
 
     // Generar token JWT con jti único
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: refreshSecret,
-      expiresIn: refreshExpiresIn as any,
+      algorithm: 'HS256',
+      expiresIn: refreshExpiresIn,
+      issuer,
+      audience,
     });
 
     // Calcular fecha de expiración

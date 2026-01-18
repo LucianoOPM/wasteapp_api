@@ -7,12 +7,37 @@ import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
 import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
+  // Validar variables de entorno requeridas
+  const requiredEnvVars = [
+    'JWT_ACCESS_SECRET',
+    'JWT_REFRESH_SECRET',
+    'DATABASE_URL',
+  ];
+
+  const missingVars = requiredEnvVars.filter((v) => !process.env[v]);
+
+  if (missingVars.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missingVars.join(', ')}`,
+    );
+  }
+
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
 
   const appPrefix = '/api/v1';
 
   app.setGlobalPrefix(appPrefix);
+
+  // Configurar CORS para permitir cookies cross-origin
+  app.enableCors({
+    origin:
+      config.getOrThrow<string>('app.frontend') || 'http://localhost:3000', // URL del frontend
+    credentials: true, // CRÍTICO: Permite envío de cookies
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
+
   app.use(cookieParser()); // Configurar cookie-parser antes de interceptores
   app.useGlobalInterceptors(new ResponseInterceptor());
   app.useGlobalFilters(new HttpExceptionFilter());

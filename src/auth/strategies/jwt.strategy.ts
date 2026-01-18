@@ -17,6 +17,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ]),
       ignoreExpiration: false,
       secretOrKey: configService.getOrThrow<string>('jwt.accessSecret'),
+      algorithms: ['HS256'],
+      issuer: configService.getOrThrow<string>('jwt.issuer'),
+      audience: configService.getOrThrow<string>('jwt.audience'),
     });
   }
 
@@ -24,8 +27,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * Extrae JWT desde cookie HTTP-only
    */
   private static extractJwtFromCookie(req: Request): string | null {
-    if (req.cookies && req.cookies.accessToken) {
-      return req.cookies.accessToken;
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieName = isProduction ? '__Host-accessToken' : 'accessToken';
+
+    if (req.cookies && req.cookies[cookieName]) {
+      return req.cookies[cookieName];
     }
     return null;
   }

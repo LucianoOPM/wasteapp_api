@@ -27,8 +27,8 @@ export class AccountsService {
     private readonly accountsRepository: AccountsRepository,
   ) {}
 
-  async create(newdata: BodyAccount) {
-    const user = await this.usersService.findOne(newdata.user);
+  async create(newdata: BodyAccount, userId: string) {
+    const user = await this.usersService.findOne(userId);
     const accountType = this.accountTypeManager(newdata.type);
 
     const accountData: NewAccount = {
@@ -78,6 +78,7 @@ export class AccountsService {
 
   async findAll(filter: AccountFilter): Promise<PaginatedResponse<Account>> {
     const { data, total } = await this.accountsRepository.findAll(filter);
+
     const page = filter.page ?? 1;
     const limit = filter.limit ?? 10;
     return buildPaginatedResponse(data, page, limit, total);
@@ -89,8 +90,15 @@ export class AccountsService {
     return account;
   }
 
-  async update(id: string, updateData: UpdateAccountDto) {
+  async update(id: string, updateData: UpdateAccountDto, userId: string) {
     const account = await this.findOne(id);
+
+    // Validar que el usuario que está editando es el dueño de la cuenta
+    if (account.userId !== userId) {
+      throw new BadRequestException(
+        'No tienes permisos para editar esta cuenta',
+      );
+    }
 
     const finalType = updateData.type ?? account.type;
 

@@ -5,6 +5,4 @@ export interface AuthResponseDto {
     name: string;
   };
   message: string;
-  accessToken: string;
-  refreshToken?: string; // Solo se incluye en login/register, no en refresh
 }
