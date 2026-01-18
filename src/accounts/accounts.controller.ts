@@ -2,12 +2,12 @@ import {
   Controller,
   Post,
   Body,
-  UsePipes,
   Get,
   Query,
   Param,
   Patch,
   Put,
+  UseGuards,
 } from '@nestjs/common';
 import { type BodyAccount, AccountSchema } from './dto/create-account.dto';
 import {
@@ -20,15 +20,23 @@ import {
   AccountFilterSchema,
   type AccountFilter,
 } from '@/accounts/dto/query-account.dto';
+import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
+import {
+  CurrentUser,
+  CurrentUserData,
+} from '@/auth/decorators/current-user.decorator';
 
 @Controller('accounts')
 export class AccountsController {
   constructor(private readonly accountService: AccountsService) {}
 
   @Post()
-  @UsePipes(new ZodValidationPipe(AccountSchema))
-  async create(@Body() createAccountDto: BodyAccount) {
-    return await this.accountService.create(createAccountDto);
+  @UseGuards(JwtAuthGuard)
+  async create(
+    @Body(new ZodValidationPipe(AccountSchema)) createAccountDto: BodyAccount,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return await this.accountService.create(createAccountDto, user.id);
   }
 
   @Get()
@@ -44,12 +52,14 @@ export class AccountsController {
   }
 
   @Put(':id')
+  @UseGuards(JwtAuthGuard)
   async update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(UpdateAccountSchema))
     updateData: UpdateAccountDto,
+    @CurrentUser() user: CurrentUserData,
   ) {
-    return await this.accountService.update(id, updateData);
+    return await this.accountService.update(id, updateData, user.id);
   }
 
   @Patch('/delete/:id')

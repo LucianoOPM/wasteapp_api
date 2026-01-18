@@ -38,6 +38,19 @@ CREATE TABLE "users" (
 );
 
 -- CreateTable
+CREATE TABLE "refresh_tokens" (
+    "id" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "expires_at" TIMESTAMP(3) NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "user_agent" TEXT,
+    "ip_address" TEXT,
+
+    CONSTRAINT "refresh_tokens_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "accounts" (
     "id" TEXT NOT NULL,
     "user_id" TEXT NOT NULL,
@@ -92,7 +105,7 @@ CREATE TABLE "credit_card_periods" (
 -- CreateTable
 CREATE TABLE "categories" (
     "id" SERIAL NOT NULL,
-    "user_id" TEXT NOT NULL,
+    "user_id" TEXT,
     "name" TEXT NOT NULL,
     "type" "CategoryType" NOT NULL,
     "icon" TEXT,
@@ -252,6 +265,15 @@ CREATE TABLE "reminders" (
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "refresh_tokens_token_key" ON "refresh_tokens"("token");
+
+-- CreateIndex
+CREATE INDEX "refresh_tokens_user_id_idx" ON "refresh_tokens"("user_id");
+
+-- CreateIndex
+CREATE INDEX "refresh_tokens_expires_at_idx" ON "refresh_tokens"("expires_at");
+
+-- CreateIndex
 CREATE INDEX "accounts_user_id_idx" ON "accounts"("user_id");
 
 -- CreateIndex
@@ -283,9 +305,6 @@ CREATE INDEX "categories_parent_id_idx" ON "categories"("parent_id");
 
 -- CreateIndex
 CREATE INDEX "categories_type_idx" ON "categories"("type");
-
--- CreateIndex
-CREATE UNIQUE INDEX "categories_user_id_name_key" ON "categories"("user_id", "name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transactions_related_transaction_id_key" ON "transactions"("related_transaction_id");
@@ -373,6 +392,9 @@ CREATE INDEX "reminders_reminder_date_idx" ON "reminders"("reminder_date");
 
 -- CreateIndex
 CREATE INDEX "reminders_is_read_idx" ON "reminders"("is_read");
+
+-- AddForeignKey
+ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -62,6 +62,27 @@ export class AuthRepository {
   }
 
   /**
+   * Marca un refresh token como usado (para detección de reuso)
+   */
+  async markTokenAsUsed(token: string): Promise<void> {
+    const hashedToken = this.hashToken(token);
+
+    await this.db.refreshToken.update({
+      where: { token: hashedToken },
+      data: { wasUsed: true },
+    });
+  }
+
+  /**
+   * Revoca todos los tokens de un usuario (usado en caso de detección de reuso)
+   */
+  async revokeAllUserTokens(userId: string): Promise<void> {
+    await this.db.refreshToken.deleteMany({
+      where: { userId },
+    });
+  }
+
+  /**
    * Limpia tokens expirados (job periódico opcional)
    */
   async cleanExpiredTokens(): Promise<number> {

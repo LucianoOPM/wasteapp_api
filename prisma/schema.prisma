@@ -46,16 +46,17 @@ model User {
 // ============================================
 
 model RefreshToken {
-  id        String   @id @default(cuid(2))
-  token     String   @unique // Hash SHA-256 del token
-  userId    String   @map("user_id")
+  id     String @id @default(cuid(2))
+  token  String @unique // Hash SHA-256 del token
+  userId String @map("user_id")
 
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
+  wasUsed   Boolean  @default(false) @map("was_used") // Detecta reuso de tokens
 
   // Metadata de seguridad
-  userAgent String?  @map("user_agent") @db.Text
-  ipAddress String?  @map("ip_address")
+  userAgent String? @map("user_agent") @db.Text
+  ipAddress String? @map("ip_address")
 
   // Relación
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -178,7 +179,7 @@ enum CategoryType {
 
 model Category {
   id     Int          @id @default(autoincrement())
-  userId String       @map("user_id")
+  userId String?      @map("user_id")
   name   String
   type   CategoryType
   icon   String? // Emoji o nombre de ícono
@@ -192,14 +193,13 @@ model Category {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relaciones
-  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                  User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent                Category?              @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   subcategories         Category[]             @relation("CategoryHierarchy")
   transactions          Transaction[]
   budgets               Budget[]
   recurringTransactions RecurringTransaction[]
 
-  @@unique([userId, name])
   @@index([userId])
   @@index([parentId])
   @@index([type])

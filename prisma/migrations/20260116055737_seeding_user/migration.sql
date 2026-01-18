@@ -1,0 +1,1 @@
+insert into users (id, name, password, email, updated_at) values ('n1ihpcpycp0u45e7w5lvvl8g', 'MrCaraTortilla', '$2a$10$ExR2hu./9FYYqcGRN.q0POeV3KI6f2boYGT6/8y86ZqkFxaZMbtuC', 'prueba@gmail.com', '2025-01-16');
